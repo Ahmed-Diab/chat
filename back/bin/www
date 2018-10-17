@@ -7,9 +7,10 @@
 var app = require('../app');
 var debug = require('debug')('back:server');
 var http = require('http');
-const Message = require('../modules/chat');
+const Messages = require('../modules/chat');
 // const allUsers  = []; // to push all concting users;
 const users = {};
+
 var UsersSchema = require('../modules/users');
 
 /**
@@ -18,52 +19,154 @@ var UsersSchema = require('../modules/users');
 
 var port = normalizePort(process.env.PORT || '3000');
 app.set('port', port);
-
-/**
- * Create HTTP server.
- */
-
 var server = http.createServer(app);
-
-/**
- * Listen on provided port, on all network interfaces.
- *
- */
 const io = require('socket.io').listen(server);
+
 // socket io connect
 io.on('connection',(socket)=>{
-  console.log('connct')
-// to get all users concting
-socket.on('new user', (data)=>{
-  if(data in users){
-    return false;
-  }else{
-    socket.username = data;
-    users[socket.username] = socket;
-    updateUsername();
-  }
-})// to get all users concting
+  // to get all users concting
+  socket.on('send messages id', (data)=>{
+    console.log(data)
+    var fromId = data.fromId ,
+        toId   = data.toId;
+    Messages.find({}, (err, allChat)=>{
+      if (err) {
+        console.log(err)
+      }else{
+        var chat = allChat.find((chatId)=>{return chatId.chatName === fromId + toId || chatId.chatName === toId + fromId})
+        if (chat) {
+          var x = [] = chat.chatMessages.sort(function(a,b){
+            return new Date(a.createdAt - new Date(b.createdAt)  );
+          })
+          // x.slice(-5)
+          users[data.fromId].emit('load old chat', {success:true, data:x})
+        }
+      }
+    })
+  })
+  socket.on('new user', (data)=>{
+    if(data._id in users){
+      return false;
+    }else{
+      socket.username = data._id;
+      users[socket.username] = socket;
+      updateUsername();
+    }
+    console.log(data)
+  })// to get all users concting
 
 socket.on('send message', (data)=>{
-  console.log(data)
-  if (data.username2 in users) {
-    users[data.username2].emit('privetMessage', {msg:data})
+  var fromId  = data.fromId,
+      toId    = data.toId;
+  if (toId in users) {
+        Messages.find({}, (err, chat)=>{
+      if(err){
+        console.log(err)
+      }else{
+        if (chat.length == 0) {
+            var newChatMessages = new Messages({
+              chatName:fromId + toId,
+              chatMessages:{
+                username:data.username,
+                body:data.body
+              }
+            })
+            Messages.create(newChatMessages, (err, messages)=>{
+              if(err){
+                console.log(err.message)
+              }else{
+                console.log(data)
+                users[toId].emit('privetMessage', {success:true, data:data})
+              }
+            })
+        }else{
+          var messages = chat.find((chatId)=>{return chatId.chatName === fromId + toId || chatId.chatName === toId + fromId})
+          if (messages) {
+            messages.chatMessages.push({
+              username:data.username,
+              body:data.body
+            })
+            messages.save((err)=>{
+              if (err) {
+                console.log(err.message)
+              }else{
+                users[toId].emit('privetMessage', {success:true, data:data})
+              }
+            })
+
+          }
+          if(!messages){
+            var newChatMessages = new Messages({
+              chatName:fromId + toId,
+              chatMessages:{
+                username:data.username,
+                body:data.body
+              }
+            })
+            Messages.create(newChatMessages, (err, messages)=>{
+              if(err){
+                console.log(err.message)
+              }else{
+                users[toId].emit('privetMessage', {success:true, data:data})
+              }
+            })
+          }
+        }
+      }
+    })
   }else{
-      console.log('not wisber')
-    } 
+    Messages.find({}, (err, chat)=>{
+      if(err){
+        console.log(err)
+      }else{
+        var chatName = chat.find((chatId)=>{return chatId.chatName === fromId + toId || chatId.chatName === toId + fromId})
+          if (chatName) {
+            chatName.chatMessages.push({
+              username:data.username,
+              body:data.body
+            })
+            chatName.save((err)=>{
+              if (err) {
+                console.log(err.message)
+              }else{
+                console.log('message ar sended')
+                // users[data.toId].emit('privetMessage', {data:data})
+              }
+            })
+          }
+          if(!chatName){
+            var newChatMessages = new Messages({
+              chatName:fromId + toId,
+              chatMessages:{
+                username:data.username,
+                body:data.body
+              }
+            })
+            Messages.create(newChatMessages, (err, messages)=>{
+              if(err){
+                console.log(err.message)
+              }else{
+                console.log('created')
+                // users[data.toId].emit('privetMessage', {body:data})
+              }
+            })
+          }
+        }
+    })
+  }
 })
 
 // if user disconncting
-socket.on('disconnect', (data)=>{
-  // to update allusers array
+socket.on('disconnect', ()=>{
   if (!socket.username)  return;
   delete users[socket.username];
   updateUsername();
 })// if user dis conncting
-function updateUsername(){
-  io.sockets.emit('usersNames', {users:Object.keys(users)})
-}// that function to make user updated
 
+// that function to make users updated
+  function updateUsername(){
+    io.sockets.emit('usersNames', {success:true, users:Object.keys(users)})
+  }// that function to make users updated
 
 })// end io connction
 

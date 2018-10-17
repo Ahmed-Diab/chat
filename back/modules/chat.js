@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
-var newMessage = mongoose.Schema({
+
+const chatMessages = mongoose.Schema({
     username:{
         type:String,
         required: [true, 'name is required']
@@ -12,6 +13,14 @@ var newMessage = mongoose.Schema({
         type:Date,
         default:Date.now()
     }
+})
+
+var newMessage = mongoose.Schema({
+    chatName:{
+        type:String,
+        required: [true, 'chatname is required']
+    },
+    chatMessages:[chatMessages]
 });
 
 const Message = module.exports = mongoose.model('Message', newMessage);
